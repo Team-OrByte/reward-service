@@ -6,7 +6,7 @@ import ballerina/os;
 
 configurable string mongoCollection = os:getEnv("MONGO_COLLECTION");
 configurable string host = "localhost";
-configurable int port = 27017;
+configurable int port = 6000;
 configurable string username = os:getEnv("MONGO_USER");
 configurable string password = os:getEnv("MONGO_PASSWORD");
 configurable string database = os:getEnv("MONGO_DB");
