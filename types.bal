@@ -51,14 +51,52 @@ public type GetRewardRequest record {|
     decimal time;
     string startFrom;
     string stopAt;
-    string userId?;
+    string userId;
     string vehicleId?;
     string message?;
 |};
 
+//No need RewardResponse , I user anydata instead of this.
 public type RewardResponse record {|
+    string userId;
     RewardType rewardType;
     decimal rewardPoints;
+    int timestamp;
+    string message?;
+|};
+
+public type RewardedReport record {|
+    RewardType rewardType;
+    decimal rewardPoints;
+    int timestamp;
+    string message?;
+|};
+
+type SpendRewardPointsRequest record {|
+    string userId;
+    decimal points;
+|};
+
+public type spendedRewardResponse record {|
+    string userId;
+    decimal requestedRewardPoints;
+    decimal rewardPointsBalance;
+    int timestamp;
+    string message?;
+|};
+
+public type spendedRewardType record {|
+    decimal requestedRewardPoints;
+    decimal rewardPointsBalance;
+    int timestamp;
+    string message?;
+|};
+
+public type UserRewardType record {|
+    string userId;
+    RewardedReport[] rewards;
+    spendedRewardType[] usedRewardPoints;
+    decimal TotalrewardPoints;
     int timestamp;
     string message?;
 |};

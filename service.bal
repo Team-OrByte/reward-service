@@ -2,11 +2,13 @@ import ballerina/http;
 import ballerina/uuid;
 import ballerinax/mongodb;
 import ballerina/os;
+import ballerina/time;
 //import ballerina/math;
 
-configurable string mongoCollection = os:getEnv("MONGO_COLLECTION");
+//configurable string mongoCollection = os:getEnv("MONGO_REWARD_COLLECTION");
+//configurable string mongoCollection = os:getEnv("MONGO_USER_REWARD_COLLECTION");
 configurable string host = "localhost";
-configurable int port = 6000;
+configurable int port = 27017;
 configurable string username = os:getEnv("MONGO_USER");
 configurable string password = os:getEnv("MONGO_PASSWORD");
 configurable string database = os:getEnv("MONGO_DB");
@@ -83,28 +85,44 @@ service on new http:Listener(9092) {
         return getLatestActiveReward(self.db);
     }
 
-    resource function post rewardPoints(GetRewardRequest req) returns RewardResponse|error {
-        RewardType|error latestActiveReward = getLatestActiveReward(self.db);
+    resource function post spendRewardPoints(SpendRewardPointsRequest body) returns anydata|error {
+        return useRewardPointsOnUser(self.db, body.userId, body.points);
+    }
 
+    resource function post rewardPoints(GetRewardRequest req) returns http:Response|error {
+        RewardType|error latestActiveReward = getLatestActiveReward(self.db);
         if(latestActiveReward is error){
             return error(string `Failed to get the latest reward`);
         }
 
         decimal rewardPoint = calculateRewardPoints(latestActiveReward, req.distance, req.time);
-
         if(rewardPoint == -1.0d){
-            return error(string `Failed to get the calculate reward points`);
+            return error(string `Failed to calculate reward points`);
         }
 
         RewardResponse res = {
+            userId: req.userId,
             rewardType: latestActiveReward,
             rewardPoints: rewardPoint,
             timestamp: latestActiveReward.timestamp,
             message: "Rewarded successfully"
         };
 
-        return res;
+        var user_reward_updated_response = postRewardPointsOnUser(self.db, req, res);
+
+        if user_reward_updated_response is error {
+            return error("Failed to post the calculated reward points on user");
+        }
+
+        http:Response response = new;
+        response.statusCode = 200;
+        response.setJsonPayload({
+            "user": res,
+            "rewardPointUpdate": user_reward_updated_response
+        });
+        return response;
     }
+
 }
 
 isolated function getLatestActiveReward(mongodb:Database db) returns RewardType|error {
@@ -118,6 +136,118 @@ isolated function getLatestActiveReward(mongodb:Database db) returns RewardType|
         return error("No active reward found");
     }
     return result.value;
+}
+
+isolated function postRewardPointsOnUser(
+    mongodb:Database db,
+    GetRewardRequest req,
+    RewardResponse reward
+) returns json|error {
+
+    mongodb:Collection userRewardCollection = check db->getCollection("user_reward");
+
+    stream<UserRewardType, error?> results = check userRewardCollection->find({ userId: req.userId });
+    record { UserRewardType value; }|error? user = results.next();
+
+    RewardedReport rewardReport = {
+        rewardType: reward.rewardType,
+        rewardPoints: reward.rewardPoints,
+        timestamp: reward.timestamp,
+        message: reward.message
+    };
+
+    if user is null {
+        UserRewardType newUser = {
+            userId: req.userId,
+            rewards: [rewardReport],
+            usedRewardPoints: [],
+            TotalrewardPoints: reward.rewardPoints,
+            timestamp: time:utcNow()[0],
+            message: "User created and reward added"
+        };
+
+        var insertResult = check userRewardCollection->insertOne(newUser);
+        return insertResult;
+
+    } else if user is record { UserRewardType value; } {
+        UserRewardType existingUser = user.value;
+
+        decimal updatedPoints = existingUser.TotalrewardPoints + reward.rewardPoints;
+        RewardedReport[] updatedRewards = existingUser.rewards.clone();
+        updatedRewards.push(rewardReport);
+
+        UserRewardType updateDoc = {
+                rewards: updatedRewards,
+                TotalrewardPoints: updatedPoints,
+                timestamp: time:utcNow()[0],
+                message: "Reward updated",
+                usedRewardPoints: existingUser.usedRewardPoints,
+                userId: existingUser.userId
+        };
+
+        mongodb:UpdateResult updateResult = check userRewardCollection->updateOne(
+            { userId: req.userId },
+            {set: updateDoc}
+        );
+
+        return updateResult;
+    }
+
+    return error("Unexpected state occurred when posting reward points");
+}
+
+isolated function useRewardPointsOnUser(
+    mongodb:Database db,
+    string userId,
+    decimal points
+) returns anydata|error {
+
+    mongodb:Collection userRewardCollection = check db->getCollection("user_reward");
+
+    stream<UserRewardType, error?> results = check userRewardCollection->find({ userId: userId });
+    record { UserRewardType value; }|error? user = results.next();
+
+    if user is null {
+        return error("User not found");
+    }
+
+    if user is record { UserRewardType value; } {
+        UserRewardType existingUser = user.value;
+
+        if existingUser.TotalrewardPoints < points {
+            return error("Not enough reward points");
+        }
+
+        decimal updatedBalance = existingUser.TotalrewardPoints - points;
+
+        spendedRewardType newSpend = {
+            requestedRewardPoints: points,
+            rewardPointsBalance: updatedBalance,
+            timestamp: time:utcNow()[0],
+            message: "Reward points used"
+        };
+
+        spendedRewardType[] updatedUsed = existingUser.usedRewardPoints.clone();
+        updatedUsed.push(newSpend);
+
+        UserRewardType updateDoc = {
+                TotalrewardPoints: updatedBalance,
+                usedRewardPoints: updatedUsed,
+                timestamp: time:utcNow()[0],
+                message: "Reward points deducted",
+                userId: existingUser.userId,
+                rewards: existingUser.rewards
+        };
+
+        mongodb:UpdateResult updateResult = check userRewardCollection->updateOne(
+            { userId: userId },
+            { set: updateDoc }
+        );
+
+        return updateResult;
+    }
+
+    return error("Unexpected error while spending reward points");
 }
 
 
