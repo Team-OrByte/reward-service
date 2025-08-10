@@ -1,34 +1,57 @@
+version: "3.8"
+
 services:
-  reward-service-db:
-    image: mongo:4.2
-    container_name: reward_service_mongo
+  mongodb:
+    image: mongo:7.0
+    container_name: reward-service-mongodb
     restart: unless-stopped
+    ports:
+      - "27022:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
       MONGO_INITDB_DATABASE: ${MONGO_DB}
     volumes:
-      - mongodata:/data/db
-    ports:
-      - '6000:6000'
+      - mongodb_data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - reward-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   reward-service:
-    build: .
-    image: reward_service:latest
-    container_name: reward_service_app
-    depends_on:
-      - reward-service-db
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reward-service-app
+    restart: unless-stopped
     ports:
-      - '9092:9092'
-    volumes:
-      - ./Config.toml:/app/Config.toml
-      - ./logs:/app/logs
+      - "9092:9092"
     environment:
-      BAL_CONFIG_FILES: /app/Config.toml
+      MONGO_HOST: mongodb
+      MONGO_PORT: ${MONGO_PORT}
+      MONGO_URL: ${MONGO_URL}
+      MONGO_DB: ${MONGO_DB}
+      MONGO_REWARD_COLLECTION: ${MONGO_REWARD_COLLECTION}
+      MONGO_USER_REWARD_COLLECTION: ${MONGO_USER_REWARD_COLLECTION}
       MONGO_USER: ${MONGO_USER}
       MONGO_PASSWORD: ${MONGO_PASSWORD}
-      MONGO_DB: ${MONGO_DB}
-      MONGO_COLLECTION: ${MONGO_COLLECTION}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - reward-network
+    volumes:
+      - ./logs:/app/logs
 
 volumes:
-  mongodata:
+  mongodb_data:
+    driver: local
+
+networks:
+  reward-network:
+    driver: bridge
