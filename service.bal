@@ -7,11 +7,11 @@ import ballerina/time;
 
 //configurable string mongoCollection = os:getEnv("MONGO_REWARD_COLLECTION");
 //configurable string mongoCollection = os:getEnv("MONGO_USER_REWARD_COLLECTION");
-configurable string host = "localhost";
-configurable int port = 27022;
-configurable string username = os:getEnv("MONGO_USER");
-configurable string password = os:getEnv("MONGO_PASSWORD");
-configurable string database = os:getEnv("MONGO_DB");
+configurable string host = ?;
+configurable int port = ?;
+configurable string username = ?;
+configurable string password = ?;
+configurable string database = ?;
 
 
 final mongodb:Client mongoDb = check new ({
