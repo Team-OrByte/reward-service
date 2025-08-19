@@ -1,9 +1,11 @@
 import ballerina/http;
 import ballerina/uuid;
 import ballerinax/mongodb;
-import ballerina/os;
+// import ballerina/os;
 import ballerina/time;
 //import ballerina/math;
+
+configurable string pub_key = ?;
 
 //configurable string mongoCollection = os:getEnv("MONGO_REWARD_COLLECTION");
 //configurable string mongoCollection = os:getEnv("MONGO_USER_REWARD_COLLECTION");
@@ -28,6 +30,13 @@ final mongodb:Client mongoDb = check new ({
     }
 });
 
+@http:ServiceConfig {
+    cors: {
+        allowOrigins: ["*"],
+        allowMethods: ["POST", "PUT", "GET", "POST", "OPTIONS"],
+        allowHeaders: ["Content-Type", "Access-Control-Allow-Origin", "X-Service-Name"]
+    }
+}
 service on new http:Listener(9092) {
     private final mongodb:Database db;
 
@@ -39,6 +48,21 @@ service on new http:Listener(9092) {
         return "server is up and running!";
     }
 
+    @http:ResourceConfig {
+            auth: [
+            {
+                jwtValidatorConfig: {
+                    issuer: "Orbyte",
+                    audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+                    signatureConfig: {
+                        certFile: pub_key
+                    },
+                    scopeKey: "scp"
+                },
+                scopes: "admin"
+            }
+        ]
+    }
     resource function post rewardTypes(RewardTypeInput input) returns RewardType|error {
         mongodb:Collection rewardCollection = check self.db->getCollection("reward_types");
         string id = uuid:createType1AsString();
@@ -50,12 +74,42 @@ service on new http:Listener(9092) {
         return reward;
     }
 
+    @http:ResourceConfig {
+            auth: [
+            {
+                jwtValidatorConfig: {
+                    issuer: "Orbyte",
+                    audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+                    signatureConfig: {
+                        certFile: pub_key
+                    },
+                    scopeKey: "scp"
+                },
+                scopes: "admin"
+            }
+        ]
+    }
     resource function get rewardTypes() returns RewardType[]|error {
         mongodb:Collection rewardCollection = check self.db->getCollection("reward_types");
         stream<RewardType, error?> resultStream = check rewardCollection->find();
         return from RewardType reward in resultStream select reward;
     }
 
+    @http:ResourceConfig {
+            auth: [
+            {
+                jwtValidatorConfig: {
+                    issuer: "Orbyte",
+                    audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+                    signatureConfig: {
+                        certFile: pub_key
+                    },
+                    scopeKey: "scp"
+                },
+                scopes: "admin"
+            }
+        ]
+    }
     resource function get rewardTypes/[string id]() returns RewardType|error {
         mongodb:Collection rewardCollection = check self.db->getCollection("reward_types");
         map<json> filter = { "id": id };
@@ -67,6 +121,21 @@ service on new http:Listener(9092) {
         return result.value;
     }
 
+    @http:ResourceConfig {
+            auth: [
+            {
+                jwtValidatorConfig: {
+                    issuer: "Orbyte",
+                    audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+                    signatureConfig: {
+                        certFile: pub_key
+                    },
+                    scopeKey: "scp"
+                },
+                scopes: "admin"
+            }
+        ]
+    }
     resource function put rewardTypes/[string id](RewardTypeUpdate update) returns RewardType|error {
         mongodb:Collection rewardCollection = check self.db->getCollection("reward_types");
         mongodb:UpdateResult updateResult = check rewardCollection->updateOne({id}, {set: update});
@@ -76,6 +145,21 @@ service on new http:Listener(9092) {
         return getRewardTypes(self.db, id);
     }
 
+    @http:ResourceConfig {
+            auth: [
+            {
+                jwtValidatorConfig: {
+                    issuer: "Orbyte",
+                    audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+                    signatureConfig: {
+                        certFile: pub_key
+                    },
+                    scopeKey: "scp"
+                },
+                scopes: "admin"
+            }
+        ]
+    }
     resource function delete rewardTypes/[string id]() returns string|error {
         mongodb:Collection reward_types = check self.db->getCollection("reward_types");
         mongodb:DeleteResult deleteResult = check reward_types->deleteOne({id});
@@ -129,6 +213,19 @@ service on new http:Listener(9092) {
 
 }
 
+// isolated function getLatestActiveReward(mongodb:Database db) returns RewardType|error {
+//     mongodb:Collection rewardCollection = check db->getCollection("reward_types");
+
+//     stream<RewardType, error?> results = check rewardCollection->find(
+//         { isActive: true }, { sort: { timestamp: -1 } });
+
+//     record { RewardType value; }|error? result = results.next();
+//     if result is null || result is error? {
+//         return error("No active reward found");
+//     }
+//     return result.value;
+// }
+
 isolated function getLatestActiveReward(mongodb:Database db) returns RewardType|error {
     mongodb:Collection rewardCollection = check db->getCollection("reward_types");
 
@@ -136,9 +233,22 @@ isolated function getLatestActiveReward(mongodb:Database db) returns RewardType|
         { isActive: true }, { sort: { timestamp: -1 } });
 
     record { RewardType value; }|error? result = results.next();
+
     if result is null || result is error? {
-        return error("No active reward found");
+        RewardType sampleReward = {
+            id: "sample-reward-id",
+            threshold: 0,
+            timeMultiplier: 0,
+            distanceMultiplier: 0,
+            formulaCoefficient: 0,
+            formularType: "LINEAR",
+            rewardPoints: 0,
+            isActive: false,
+            timestamp: time:utcNow()[0]
+        };
+        return sampleReward;
     }
+
     return result.value;
 }
 
