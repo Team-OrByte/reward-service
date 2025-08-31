@@ -1,14 +1,20 @@
-FROM ballerina/ballerina:2201.12.7
+FROM ballerina/ballerina:2201.12.7 AS builder
 
 WORKDIR /app
-COPY . .
 
-RUN addgroup -g 10001 appgroup && \
-    adduser -S -u 10001 -G appgroup appuser
-
-USER 10001
+COPY Ballerina.toml .
+COPY *.bal .
 
 RUN bal build
 
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+COPY --from=builder /app/target/bin/reward_service.jar .
+
+RUN mkdir -p logs
+
 EXPOSE 9092
-CMD ["bal", "run", "target/bin/reward_service.jar"]
+
+CMD ["java", "-jar", "reward_service.jar"]
